@@ -249,6 +249,68 @@ struct ZaiQuotaLevelParsingTests {
     }
 
     @Test
+    func `parses 3+ TOKENS_LIMIT keeps shortest and longest only`() throws {
+        // With 3 TOKENS_LIMIT entries, only shortest and longest should be preserved.
+        // The middle entry (medium window) should be discarded.
+        let json = """
+        {
+          "code": 200,
+          "msg": "Operation successful",
+          "data": {
+            "limits": [
+              {
+                "type": "TOKENS_LIMIT",
+                "unit": 3,
+                "number": 5,
+                "percentage": 30,
+                "nextResetTime": 1768507567547
+              },
+              {
+                "type": "TOKENS_LIMIT",
+                "unit": 3,
+                "number": 12,
+                "percentage": 15,
+                "nextResetTime": 1768607567547
+              },
+              {
+                "type": "TOKENS_LIMIT",
+                "unit": 1,
+                "number": 7,
+                "percentage": 10,
+                "nextResetTime": 1768907567547
+              },
+              {
+                "type": "TIME_LIMIT",
+                "unit": 5,
+                "number": 1,
+                "usage": 100,
+                "currentValue": 7,
+                "remaining": 93,
+                "percentage": 7,
+                "usageDetails": []
+              }
+            ]
+          },
+          "success": true
+        }
+        """
+
+        let snapshot = try ZaiUsageFetcher.parseUsageSnapshot(from: Data(json.utf8))
+
+        // Shortest window (5-hour = 300 min) should be tokenLimit.
+        #expect(snapshot.tokenLimit?.windowMinutes == 300)
+        #expect(snapshot.tokenLimit?.percentage == 30)
+        // Longest window (7-day = 10080 min) should be weeklyLimit.
+        #expect(snapshot.weeklyLimit?.windowMinutes == 10080)
+        #expect(snapshot.weeklyLimit?.percentage == 10)
+        // Middle TOKENS_LIMIT (12-hour = 720 min) should NOT be preserved.
+        #expect(snapshot.tokenLimit?.windowMinutes != 720)
+        #expect(snapshot.weeklyLimit?.windowMinutes != 720)
+        // TIME_LIMIT should still be preserved.
+        #expect(snapshot.timeLimit != nil)
+    }
+
+    @Test
     func `single TOKENS_LIMIT has no weekly`() throws {
         let json = """
         {
