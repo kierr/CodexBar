@@ -12,7 +12,7 @@ enum MenuBarMetricWindowResolver {
         guard let snapshot else { return nil }
         switch preference {
         case .tertiary:
-            guard provider == .cursor else {
+            guard provider == .cursor || provider == .zai else {
                 if provider == .antigravity {
                     return snapshot.tertiary ?? snapshot.secondary ?? snapshot.primary
                 }
@@ -54,7 +54,7 @@ enum MenuBarMetricWindowResolver {
             {
                 return primary.usedPercent >= secondary.usedPercent ? primary : secondary
             }
-            if provider == .cursor {
+            if provider == .cursor || provider == .zai {
                 return Self.mostConstrainedWindow(
                     primary: snapshot.primary,
                     secondary: snapshot.secondary,

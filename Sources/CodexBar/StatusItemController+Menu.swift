@@ -1245,38 +1245,64 @@ extension StatusItemController {
     }
 
     private func makeZaiUsageDetailsSubmenu(snapshot: UsageSnapshot?) -> NSMenu? {
-        guard let timeLimit = snapshot?.zaiUsage?.timeLimit else { return nil }
-        guard !timeLimit.usageDetails.isEmpty else { return nil }
+        guard let zaiUsage = snapshot?.zaiUsage else { return nil }
+        let hasToolDetails = !(zaiUsage.timeLimit?.usageDetails.isEmpty ?? true)
+        let hasSub = zaiUsage.subscription != nil
+        guard hasToolDetails || hasSub else { return nil }
 
         let submenu = NSMenu()
         submenu.delegate = self
-        let titleItem = NSMenuItem(title: "MCP details", action: nil, keyEquivalent: "")
-        titleItem.isEnabled = false
-        submenu.addItem(titleItem)
 
-        if let window = timeLimit.windowLabel {
-            let item = NSMenuItem(title: "Window: \(window)", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            submenu.addItem(item)
+        // Subscription section
+        if let sub = zaiUsage.subscription {
+            let planItem = NSMenuItem(title: "Plan: \(sub.productName)", action: nil, keyEquivalent: "")
+            planItem.isEnabled = false
+            submenu.addItem(planItem)
+            if let cycle = sub.billingCycle {
+                let statusText = sub.isActive ? "Active" : sub.status
+                let item = NSMenuItem(title: "Status: \(statusText) (\(cycle))", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                submenu.addItem(item)
+            }
+            if let renewDate = sub.nextRenewTime {
+                let item = NSMenuItem(title: "Renews: \(renewDate)", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                submenu.addItem(item)
+            }
+            if hasToolDetails { submenu.addItem(.separator()) }
         }
-        if let resetTime = timeLimit.nextResetTime {
-            let reset = self.settings.resetTimeDisplayStyle == .absolute
-                ? UsageFormatter.resetDescription(from: resetTime)
-                : UsageFormatter.resetCountdownDescription(from: resetTime)
-            let item = NSMenuItem(title: "Resets: \(reset)", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            submenu.addItem(item)
-        }
-        submenu.addItem(.separator())
 
-        let sortedDetails = timeLimit.usageDetails.sorted {
-            $0.modelCode.localizedCaseInsensitiveCompare($1.modelCode) == .orderedAscending
+        // Tool usage details
+        if let timeLimit = zaiUsage.timeLimit, !timeLimit.usageDetails.isEmpty {
+            let titleItem = NSMenuItem(title: "Tool usage details", action: nil, keyEquivalent: "")
+            titleItem.isEnabled = false
+            submenu.addItem(titleItem)
+
+            if let window = timeLimit.windowLabel {
+                let item = NSMenuItem(title: "Window: \(window)", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                submenu.addItem(item)
+            }
+            if let resetTime = timeLimit.nextResetTime {
+                let reset = self.settings.resetTimeDisplayStyle == .absolute
+                    ? UsageFormatter.resetDescription(from: resetTime)
+                    : UsageFormatter.resetCountdownDescription(from: resetTime)
+                let item = NSMenuItem(title: "Resets: \(reset)", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                submenu.addItem(item)
+            }
+
+            let sortedDetails = timeLimit.usageDetails.sorted {
+                $0.modelCode.localizedCaseInsensitiveCompare($1.modelCode) == .orderedAscending
+            }
+            for detail in sortedDetails {
+                let usage = UsageFormatter.tokenCountString(detail.usage)
+                let item = NSMenuItem(
+                    title: "\(detail.modelCode): \(usage)", action: nil, keyEquivalent: "")
+                submenu.addItem(item)
+            }
         }
-        for detail in sortedDetails {
-            let usage = UsageFormatter.tokenCountString(detail.usage)
-            let item = NSMenuItem(title: "\(detail.modelCode): \(usage)", action: nil, keyEquivalent: "")
-            submenu.addItem(item)
-        }
+
         return submenu
     }
 

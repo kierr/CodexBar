@@ -10,10 +10,10 @@ public enum ZaiProviderDescriptor {
             metadata: ProviderMetadata(
                 id: .zai,
                 displayName: "z.ai",
-                sessionLabel: "Tokens",
-                weeklyLabel: "MCP",
-                opusLabel: nil,
-                supportsOpus: false,
+                sessionLabel: "5-hour",
+                weeklyLabel: "Tools",
+                opusLabel: "Weekly",
+                supportsOpus: true,
                 supportsCredits: false,
                 creditsHint: "",
                 toggleTitle: "Show z.ai usage",
@@ -53,12 +53,31 @@ struct ZaiAPIFetchStrategy: ProviderFetchStrategy {
             throw ZaiSettingsError.missingToken
         }
         let region = context.settings?.zai?.apiRegion ?? .global
-        let usage = try await ZaiUsageFetcher.fetchUsage(
+
+        // Fetch quota (required) and subscription (optional) in parallel.
+        async let quotaTask = ZaiUsageFetcher.fetchUsage(
             apiKey: apiKey,
             region: region,
             environment: context.env)
+        async let subscriptionTask = ZaiSubscriptionFetcher.fetchSubscription(
+            apiKey: apiKey,
+            region: region,
+            environment: context.env)
+
+        let usage = try await quotaTask
+        let subscription = await subscriptionTask
+
+        let enriched = ZaiUsageSnapshot(
+            tokenLimit: usage.tokenLimit,
+            weeklyLimit: usage.weeklyLimit,
+            timeLimit: usage.timeLimit,
+            planName: usage.planName,
+            level: usage.level,
+            subscription: subscription,
+            updatedAt: usage.updatedAt)
+
         return self.makeResult(
-            usage: usage.toUsageSnapshot(),
+            usage: enriched.toUsageSnapshot(),
             sourceLabel: "api")
     }
 
