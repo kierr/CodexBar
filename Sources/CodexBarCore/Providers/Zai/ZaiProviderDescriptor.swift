@@ -22,7 +22,8 @@ public enum ZaiProviderDescriptor {
                 isPrimaryProvider: false,
                 usesAccountFallback: false,
                 dashboardURL: "https://z.ai/manage-apikey/subscription",
-                statusPageURL: nil),
+                statusPageURL: nil,
+                statusLinkURL: "https://z.ai"),
             branding: ProviderBranding(
                 iconStyle: .zai,
                 iconResourceName: "ProviderIcon-zai",
