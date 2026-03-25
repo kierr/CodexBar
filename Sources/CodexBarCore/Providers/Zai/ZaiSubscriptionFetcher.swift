@@ -104,7 +104,10 @@ private struct ZaiSubscriptionRaw: Decodable {
     let valid: String?
 
     func toEntry() -> ZaiSubscriptionEntry? {
-        guard let name = self.productName, !name.isEmpty else { return nil }
+        guard
+            let name = self.productName?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !name.isEmpty
+        else { return nil }
 
         var validFrom: String?
         var validTo: String?

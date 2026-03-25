@@ -33,6 +33,7 @@ z.ai is API-token based. Fetches quota limits and subscription info in parallel.
 - `GET https://api.z.ai/api/biz/subscription/list`
 - Returns plan name (e.g. "GLM Coding Max"), status, billing cycle, renewal dates.
 - Fetched in parallel with quota on each refresh.
+- Headers: `authorization: Bearer <token>`, `accept: application/json`
 
 ## Parsing + mapping
 
@@ -40,11 +41,11 @@ z.ai is API-token based. Fetches quota limits and subscription info in parallel.
   - `data.limits[]` → each limit entry.
   - `data.planName` (or `plan`, `plan_type`, `packageName`) → plan label.
   - `data.level` → plan tier (e.g. "max") used as fallback identity.
-- Limit types (up to 3 per account, stable slot assignment):
-  - `TOKENS_LIMIT` + 5-hour window → primary ("5-hour") — everyone has this.
-  - `TIME_LIMIT` + monthly → secondary ("MCP") — everyone has this.
+- Limit types (stable slot assignment, up to 3 per account):
+  - `TOKENS_LIMIT` + 5-hour window → primary ("5-hour") — typical.
+  - `TIME_LIMIT` + monthly → secondary ("MCP") — typical.
   - `TOKENS_LIMIT` + 7-day window → tertiary ("Weekly") — some accounts only.
-  - If no token limit exists, TIME_LIMIT is promoted to primary and secondary is left empty.
+  - Promotion: If no 5-hour token limit exists, TIME_LIMIT is promoted to primary and secondary is left empty.
 - Identity priority: subscription.productName → planName → level.
 - Window duration: unit (1=days, 3=hours, 5=minutes) + number → minutes.
 - Reset: `nextResetTime` (epoch ms) → date.

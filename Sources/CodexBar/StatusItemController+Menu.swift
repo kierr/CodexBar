@@ -1267,7 +1267,7 @@ extension StatusItemController {
             let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
             statusItem.isEnabled = false
             submenu.addItem(statusItem)
-            if let renewDate = sub.nextRenewTime {
+            if let renewDate = sub.nextRenewTime ?? sub.validTo {
                 let item = NSMenuItem(title: "Renews: \(renewDate)", action: nil, keyEquivalent: "")
                 item.isEnabled = false
                 submenu.addItem(item)

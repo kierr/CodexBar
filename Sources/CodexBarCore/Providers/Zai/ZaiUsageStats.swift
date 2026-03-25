@@ -415,8 +415,9 @@ public struct ZaiUsageFetcher: Sendable {
         // Entries with nil windowMinutes (unknown unit) sort to the end to avoid displacing valid entries.
         tokenLimits.sort { ($0.windowMinutes ?? Int.max) < ($1.windowMinutes ?? Int.max) }
         let fiveHourLimit = tokenLimits.first
-        // Weekly is the LONGEST window (last after sort), not second shortest.
-        let weeklyLimit = tokenLimits.count > 1 ? tokenLimits.last : nil
+        // Weekly is the LONGEST known window; filter out nil windowMinutes entries.
+        let validWindowLimits = tokenLimits.filter { $0.windowMinutes != nil }
+        let weeklyLimit = validWindowLimits.count > 1 ? validWindowLimits.last : nil
 
         return ZaiUsageSnapshot(
             tokenLimit: fiveHourLimit,
