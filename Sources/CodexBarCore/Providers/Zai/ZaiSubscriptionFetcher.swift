@@ -39,7 +39,7 @@ public struct ZaiSubscriptionFetcher: Sendable {
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
-        request.timeoutInterval = 10
+        request.timeoutInterval = 5
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -61,9 +61,9 @@ public struct ZaiSubscriptionFetcher: Sendable {
             let response = try decoder.decode(ZaiSubscriptionListResponse.self, from: data)
             guard response.isSuccess, let entries = response.data else { return nil }
 
-            // Return the first active subscription.
-            let active = entries.first { $0.status == "VALID" } ?? entries.first
-            return active?.toEntry()
+            // Validate entries first, then prefer the active one.
+            let validated = entries.compactMap { $0.toEntry() }
+            return validated.first { $0.isActive } ?? validated.first
         } catch {
             Self.log.debug("z.ai subscription parse error: \(error.localizedDescription)")
             return nil

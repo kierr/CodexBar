@@ -44,6 +44,7 @@ z.ai is API-token based. Fetches quota limits and subscription info in parallel.
   - `TOKENS_LIMIT` + 5-hour window → primary ("5-hour") — everyone has this.
   - `TIME_LIMIT` + monthly → secondary ("MCP") — everyone has this.
   - `TOKENS_LIMIT` + 7-day window → tertiary ("Weekly") — some accounts only.
+  - If no token limit exists, TIME_LIMIT is promoted to primary and secondary is left empty.
 - Identity priority: subscription.productName → planName → level.
 - Window duration: unit (1=days, 3=hours, 5=minutes) + number → minutes.
 - Reset: `nextResetTime` (epoch ms) → date.

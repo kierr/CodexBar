@@ -1258,12 +1258,15 @@ extension StatusItemController {
             let planItem = NSMenuItem(title: "Plan: \(sub.productName)", action: nil, keyEquivalent: "")
             planItem.isEnabled = false
             submenu.addItem(planItem)
-            if let cycle = sub.billingCycle {
-                let statusText = sub.isActive ? "Active" : sub.status
-                let item = NSMenuItem(title: "Status: \(statusText) (\(cycle))", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-                submenu.addItem(item)
+            let statusText = sub.isActive ? "Active" : sub.status
+            let statusTitle = if let cycle = sub.billingCycle {
+                "Status: \(statusText) (\(cycle))"
+            } else {
+                "Status: \(statusText)"
             }
+            let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+            statusItem.isEnabled = false
+            submenu.addItem(statusItem)
             if let renewDate = sub.nextRenewTime {
                 let item = NSMenuItem(title: "Renews: \(renewDate)", action: nil, keyEquivalent: "")
                 item.isEnabled = false
