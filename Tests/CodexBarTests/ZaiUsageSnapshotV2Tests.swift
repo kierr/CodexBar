@@ -45,7 +45,7 @@ struct ZaiThreeTierMappingTests {
     }
 
     @Test
-    func `three tier maps weekly to secondary and time to tertiary`() {
+    func `three tier maps tools to secondary and weekly to tertiary`() {
         let now = Date()
         let snapshot = ZaiUsageSnapshot(
             tokenLimit: self.makeLimit(type: .tokensLimit, unit: .hours, number: 5),
@@ -57,8 +57,11 @@ struct ZaiThreeTierMappingTests {
         let usage = snapshot.toUsageSnapshot()
 
         #expect(usage.primary?.windowMinutes == 300)
-        #expect(usage.secondary?.windowMinutes == 10080)
-        #expect(usage.tertiary != nil)
+        // Secondary = tools (TIME_LIMIT — windowMinutes is nil for time limits)
+        #expect(usage.secondary != nil)
+        #expect(usage.secondary?.windowMinutes == nil)
+        // Tertiary = weekly (TOKENS_LIMIT, 7 days)
+        #expect(usage.tertiary?.windowMinutes == 10080)
     }
 
     @Test

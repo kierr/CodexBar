@@ -37,11 +37,10 @@ z.ai is API-token based. Fetches quota limits and subscription info in parallel.
   - `data.limits[]` → each limit entry.
   - `data.planName` (or `plan`, `plan_type`, `packageName`) → plan label.
   - `data.level` → plan tier (e.g. "max") used as fallback identity.
-- Limit types (up to 3 per account):
-  - `TOKENS_LIMIT` + 5-hour window → primary ("5-hour").
+- Limit types (up to 3 per account, stable slot assignment):
+  - `TOKENS_LIMIT` + 5-hour window → primary ("5-hour") — everyone has this.
+  - `TIME_LIMIT` + monthly → secondary ("Tools") — everyone has this.
   - `TOKENS_LIMIT` + 7-day window → tertiary ("Weekly") — some accounts only.
-  - `TIME_LIMIT` + monthly → secondary ("Tools") — web search/reader/zread quota.
-  - When weekly exists: primary=5-hour, secondary=weekly, tertiary=tools.
 - Identity priority: subscription.productName → planName → level.
 - Window duration: unit (1=days, 3=hours, 5=minutes) + number → minutes.
 - Reset: `nextResetTime` (epoch ms) → date.
@@ -56,9 +55,6 @@ The z.ai details submenu shows:
 
 ## Known limitations
 
-- Static labels (`weeklyLabel: "Tools"`, `opusLabel: "Weekly"`) match the common 2-tier account layout.
-  For 3-tier accounts the secondary label reads "Tools" when it's actually the weekly token limit.
-  Dynamic labels would require a `ProviderMetadata` refactor.
 - Widget does not surface the new subscription or 3-tier data.
 
 ## Key files

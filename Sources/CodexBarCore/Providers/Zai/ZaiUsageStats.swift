@@ -162,32 +162,26 @@ public struct ZaiUsageSnapshot: Sendable {
 
 extension ZaiUsageSnapshot {
     public func toUsageSnapshot() -> UsageSnapshot {
-        // 3-tier mapping:
-        //   primary   = 5-hour token limit (TOKENS_LIMIT)
-        //   secondary = weekly token limit (if present) OR time/tool limit
-        //   tertiary  = time/tool limit (when weekly is present)
+        // Stable slot assignment:
+        //   primary   = 5-hour tokens (TOKENS_LIMIT) — always
+        //   secondary = tools (TIME_LIMIT) — always, unless promoted to primary
+        //   tertiary  = weekly tokens (TOKENS_LIMIT) — some accounts only
         let primary: RateWindow?
         let secondary: RateWindow?
         let tertiary: RateWindow?
 
         if let tokenLimit = self.tokenLimit {
             primary = Self.rateWindow(for: tokenLimit)
+            secondary = self.timeLimit.map { Self.rateWindow(for: $0) }
         } else if let timeLimit = self.timeLimit {
+            // No token limit — promote tools to primary, nothing in secondary.
             primary = Self.rateWindow(for: timeLimit)
+            secondary = nil
         } else {
             primary = RateWindow(usedPercent: 0, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
-        }
-
-        if let weeklyLimit = self.weeklyLimit {
-            secondary = Self.rateWindow(for: weeklyLimit)
-            tertiary = self.timeLimit.map { Self.rateWindow(for: $0) }
-        } else if self.tokenLimit != nil, let timeLimit = self.timeLimit {
-            secondary = Self.rateWindow(for: timeLimit)
-            tertiary = nil
-        } else {
             secondary = nil
-            tertiary = nil
         }
+        tertiary = self.weeklyLimit.map { Self.rateWindow(for: $0) }
 
         // Use subscription productName, planName, then level as fallback for identity display
         let subLabel = self.subscription?.productName
