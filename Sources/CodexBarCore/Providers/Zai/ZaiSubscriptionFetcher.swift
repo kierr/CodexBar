@@ -75,9 +75,8 @@ public struct ZaiSubscriptionFetcher: Sendable {
         environment: [String: String]) -> String
     {
         if let host = ZaiSettingsReader.apiHost(environment: environment) {
-            let cleaned = ZaiSettingsReader.cleaned(host) ?? host
-            if cleaned.hasPrefix("http") { return cleaned }
-            return "https://\(cleaned)"
+            if host.hasPrefix("http") { return host }
+            return "https://\(host)"
         }
         return region.baseURLString
     }

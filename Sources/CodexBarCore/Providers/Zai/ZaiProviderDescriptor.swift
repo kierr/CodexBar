@@ -11,7 +11,7 @@ public enum ZaiProviderDescriptor {
                 id: .zai,
                 displayName: "z.ai",
                 sessionLabel: "5-hour",
-                weeklyLabel: "Tools",
+                weeklyLabel: "MCP",
                 opusLabel: "Weekly",
                 supportsOpus: true,
                 supportsCredits: false,

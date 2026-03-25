@@ -57,7 +57,7 @@ struct ZaiThreeTierMappingTests {
         let usage = snapshot.toUsageSnapshot()
 
         #expect(usage.primary?.windowMinutes == 300)
-        // Secondary = tools (TIME_LIMIT — windowMinutes is nil for time limits)
+        // Secondary = MCP (TIME_LIMIT — windowMinutes is nil for time limits)
         #expect(usage.secondary != nil)
         #expect(usage.secondary?.windowMinutes == nil)
         // Tertiary = weekly (TOKENS_LIMIT, 7 days)
@@ -299,26 +299,15 @@ struct ZaiQuotaLevelParsingTests {
 
 struct ZaiSubscriptionParsingTests {
     @Test
-    func `subscription entry isActive`() {
-        let active = ZaiSubscriptionEntry(
-            productName: "GLM Coding Max",
-            status: "VALID",
-            billingCycle: nil,
-            nextRenewTime: nil,
-            autoRenew: false,
-            validFrom: nil,
-            validTo: nil)
-        #expect(active.isActive == true)
-
-        let inactive = ZaiSubscriptionEntry(
-            productName: "GLM Coding Max",
-            status: "EXPIRED",
-            billingCycle: nil,
-            nextRenewTime: nil,
-            autoRenew: false,
-            validFrom: nil,
-            validTo: nil)
-        #expect(inactive.isActive == false)
+    func `subscription entry isActive only for VALID`() {
+        let statuses = ["VALID", "EXPIRED", "PENDING", "CANCELLED", "SUSPENDED", "valid", ""]
+        let results = statuses.map { status in
+            ZaiSubscriptionEntry(
+                productName: "P", status: status,
+                billingCycle: nil, nextRenewTime: nil, autoRenew: false,
+                validFrom: nil, validTo: nil).isActive
+        }
+        #expect(results == [true, false, false, false, false, false, false])
     }
 }
 
@@ -490,13 +479,36 @@ struct ZaiSubscriptionResponseParsingTests {
         #expect(e2?.validFrom == "2026-03-24 01:41:28")
         #expect(e2?.validTo == "2026-06-24 01:41:28")
     }
+
+    @Test
+    func `valid field regex returns nil for malformed input`() {
+        let cases = ["garbage", "2026-03-24", "2026-03-24 01:41:28-", "", "foo-bar"]
+        for invalid in cases {
+            let json = """
+            {
+              "code": 200, "msg": "OK", "success": true,
+              "data": [{ "productName": "P", "status": "VALID", "valid": "\(invalid)" }]
+            }
+            """
+            let entry = ZaiSubscriptionFetcher.parseSubscription(from: Data(json.utf8))
+            #expect(entry?.validFrom == nil, "Expected nil validFrom for: \(invalid)")
+            #expect(entry?.validTo == nil, "Expected nil validTo for: \(invalid)")
+        }
+    }
 }
 
 // MARK: - Snapshot enrichment tests
 
 struct ZaiSnapshotEnrichmentTests {
+    private func makeLimit(type: ZaiLimitType, unit: ZaiLimitUnit, number: Int) -> ZaiLimitEntry {
+        ZaiLimitEntry(
+            type: type, unit: unit, number: number,
+            usage: 100, currentValue: 20, remaining: 80, percentage: 20,
+            usageDetails: [], nextResetTime: nil)
+    }
+
     @Test
-    func `snapshot preserves subscription field`() {
+    func `snapshot preserves subscription and level`() {
         let sub = ZaiSubscriptionEntry(
             productName: "Pro",
             status: "VALID",
@@ -517,5 +529,18 @@ struct ZaiSnapshotEnrichmentTests {
 
         #expect(snapshot.subscription?.productName == "Pro")
         #expect(snapshot.level == "max")
+    }
+
+    @Test
+    func `snapshot preserves weeklyLimit`() {
+        let weekly = self.makeLimit(type: .tokensLimit, unit: .days, number: 7)
+        let snapshot = ZaiUsageSnapshot(
+            tokenLimit: self.makeLimit(type: .tokensLimit, unit: .hours, number: 5),
+            weeklyLimit: weekly,
+            timeLimit: nil,
+            planName: nil,
+            updatedAt: Date())
+
+        #expect(snapshot.weeklyLimit?.windowMinutes == 10080)
     }
 }

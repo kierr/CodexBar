@@ -1274,7 +1274,7 @@ extension StatusItemController {
 
         // Tool usage details
         if let timeLimit = zaiUsage.timeLimit, !timeLimit.usageDetails.isEmpty {
-            let titleItem = NSMenuItem(title: "Tool usage details", action: nil, keyEquivalent: "")
+            let titleItem = NSMenuItem(title: "MCP usage details", action: nil, keyEquivalent: "")
             titleItem.isEnabled = false
             submenu.addItem(titleItem)
 
@@ -1299,6 +1299,7 @@ extension StatusItemController {
                 let usage = UsageFormatter.tokenCountString(detail.usage)
                 let item = NSMenuItem(
                     title: "\(detail.modelCode): \(usage)", action: nil, keyEquivalent: "")
+                item.isEnabled = false
                 submenu.addItem(item)
             }
         }
