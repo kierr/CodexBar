@@ -7,7 +7,7 @@ read_when:
 
 # z.ai provider
 
-z.ai is API-token based. Fetches quota limits and subscription info in parallel.
+z.ai is API-token based. Fetches quota limits first, then enriches with subscription data (best-effort with 1.5s timeout).
 
 ## Token sources (fallback order)
 
