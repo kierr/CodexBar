@@ -47,6 +47,7 @@ headers, source selection, provider ordering, and token accounts are stored in `
 | Mistral | Console billing API via Ory Kratos session cookies (`web`). |
 | DeepSeek | API key from env or token accounts → balance endpoint (`api`). |
 | Codebuff | API token from config/env or `codebuff login` credentials → usage API (`api`). |
+| Chutes | API key from env → subscription usage + user identity APIs (`api`). |
 
 ## Codex
 - Web dashboard (optional, off by default): `https://chatgpt.com/codex/settings/usage` via WebView + browser cookies.
@@ -239,5 +240,12 @@ headers, source selection, provider ordering, and token accounts are stored in `
 - Override base URL with `CODEBUFF_API_URL`.
 - Status: none yet.
 - Details: `docs/codebuff.md`.
+
+## Chutes
+- API key via `CHUTES_API_KEY` / `CHUTES_KEY` env var.
+- Shows 4-hour and monthly USD spend windows with synthesized reset boundaries.
+- Fetches user identity (username) and account balance from `/users/me`.
+- Override base URL with `CHUTES_API_HOST`.
+- Status: none yet.
 
 See also: `docs/provider.md` for architecture notes.

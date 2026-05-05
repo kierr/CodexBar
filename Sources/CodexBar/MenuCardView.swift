@@ -1177,6 +1177,13 @@ extension UsageMenuCardView.Model {
         {
             weeklyDetailText = detail
         }
+        if input.provider == .chutes,
+           let detail = weekly.resetDescription,
+           !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            weeklyDetailText = detail
+            weeklyResetText = nil
+        }
         // Perplexity bonus credits don't reset; show balance without "Resets" prefix.
         if input.provider == .perplexity,
            let detail = weekly.resetDescription?.trimmingCharacters(in: .whitespacesAndNewlines),

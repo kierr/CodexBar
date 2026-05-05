@@ -97,11 +97,23 @@ public struct ChutesUsageSnapshot: Sendable {
             accountOrganization: nil,
             loginMethod: loginMethod)
 
+        let providerCost: ProviderCostSnapshot? = self.user.flatMap { user in
+            user.balance.map { _ in
+                ProviderCostSnapshot(
+                    used: self.monthly.usage,
+                    limit: self.monthly.cap,
+                    currencyCode: "USD",
+                    period: "Monthly",
+                    resetsAt: Self.nextMonthStart(from: self.updatedAt),
+                    updatedAt: self.updatedAt)
+            }
+        }
+
         return UsageSnapshot(
             primary: primary,
             secondary: secondary,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: providerCost,
             updatedAt: self.updatedAt,
             identity: identity)
     }

@@ -16,10 +16,7 @@ struct ChutesProviderImplementation: ProviderImplementation {
 
     @MainActor
     func isAvailable(context: ProviderAvailabilityContext) -> Bool {
-        if ChutesSettingsReader.apiKey(environment: context.environment) != nil {
-            return true
-        }
-        return !context.settings.tokenAccounts(for: .chutes).isEmpty
+        ChutesSettingsReader.apiKey(environment: context.environment) != nil
     }
 
     @MainActor
