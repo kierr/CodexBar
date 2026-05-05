@@ -90,6 +90,12 @@ public enum ProviderTokenResolver {
         self.codebuffResolution(environment: environment, authFileURL: authFileURL)?.token
     }
 
+    public static func chutesToken(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> String?
+    {
+        self.chutesResolution(environment: environment)?.token
+    }
+
     public static func zaiResolution(
         environment: [String: String] = ProcessInfo.processInfo.environment) -> ProviderTokenResolution?
     {
@@ -187,6 +193,12 @@ public enum ProviderTokenResolver {
             return ProviderTokenResolution(token: token, source: .authFile)
         }
         return nil
+    }
+
+    public static func chutesResolution(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> ProviderTokenResolution?
+    {
+        self.resolveEnv(ChutesSettingsReader.apiKey(environment: environment))
     }
 
     public static func perplexityResolution(

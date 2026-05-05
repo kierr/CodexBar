@@ -12,6 +12,8 @@ public enum LogCategories {
     public static let claudeProbe = "claude-probe"
     public static let claudeUsage = "claude-usage"
     public static let codexRPC = "codex-rpc"
+    public static let chutesSettings = "chutes-settings"
+    public static let chutesUsage = "chutes-usage"
     public static let configMigration = "config-migration"
     public static let configStore = "config-store"
     public static let confetti = "confetti"

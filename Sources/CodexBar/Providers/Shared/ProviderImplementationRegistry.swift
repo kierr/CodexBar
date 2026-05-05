@@ -42,6 +42,7 @@ enum ProviderImplementationRegistry {
         case .mistral: MistralProviderImplementation()
         case .deepseek: DeepSeekProviderImplementation()
         case .codebuff: CodebuffProviderImplementation()
+        case .chutes: ChutesProviderImplementation()
         }
     }
 
