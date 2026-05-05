@@ -133,23 +133,28 @@ public struct ZaiUsageDetail: Sendable, Codable {
 /// Complete z.ai usage response
 public struct ZaiUsageSnapshot: Sendable {
     public let tokenLimit: ZaiLimitEntry?
-    /// Shorter-window TOKENS_LIMIT (e.g. 5-hour), present only when the API returns two TOKENS_LIMIT entries.
-    public let sessionTokenLimit: ZaiLimitEntry?
+    public let weeklyLimit: ZaiLimitEntry?
     public let timeLimit: ZaiLimitEntry?
     public let planName: String?
+    public let level: String?
+    public let subscription: ZaiSubscriptionEntry?
     public let updatedAt: Date
 
     public init(
         tokenLimit: ZaiLimitEntry?,
-        sessionTokenLimit: ZaiLimitEntry? = nil,
+        weeklyLimit: ZaiLimitEntry? = nil,
         timeLimit: ZaiLimitEntry?,
         planName: String?,
+        level: String? = nil,
+        subscription: ZaiSubscriptionEntry? = nil,
         updatedAt: Date)
     {
         self.tokenLimit = tokenLimit
-        self.sessionTokenLimit = sessionTokenLimit
+        self.weeklyLimit = weeklyLimit
         self.timeLimit = timeLimit
         self.planName = planName
+        self.level = level
+        self.subscription = subscription
         self.updatedAt = updatedAt
     }
 
@@ -161,18 +166,31 @@ public struct ZaiUsageSnapshot: Sendable {
 
 extension ZaiUsageSnapshot {
     public func toUsageSnapshot() -> UsageSnapshot {
-        let primaryLimit = self.tokenLimit ?? self.timeLimit
-        let secondaryLimit = (self.tokenLimit != nil && self.timeLimit != nil) ? self.timeLimit : nil
-        let primary = primaryLimit.map { Self.rateWindow(for: $0) } ?? RateWindow(
-            usedPercent: 0,
-            windowMinutes: nil,
-            resetsAt: nil,
-            resetDescription: nil)
-        let secondary = secondaryLimit.map { Self.rateWindow(for: $0) }
-        let tertiary = self.sessionTokenLimit.map { Self.rateWindow(for: $0) }
+        // Stable slot assignment:
+        //   primary   = 5-hour tokens (TOKENS_LIMIT) — always
+        //   secondary = tools (TIME_LIMIT) — always, unless promoted to primary
+        //   tertiary  = weekly tokens (TOKENS_LIMIT) — some accounts only
+        let primary: RateWindow?
+        let secondary: RateWindow?
+        let tertiary: RateWindow?
 
-        let planName = self.planName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let loginMethod = (planName?.isEmpty ?? true) ? nil : planName
+        if let tokenLimit = self.tokenLimit {
+            primary = Self.rateWindow(for: tokenLimit)
+            secondary = self.timeLimit.map { Self.rateWindow(for: $0) }
+        } else if let timeLimit = self.timeLimit {
+            primary = Self.rateWindow(for: timeLimit)
+            secondary = nil
+        } else {
+            primary = RateWindow(usedPercent: 0, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
+            secondary = nil
+        }
+        tertiary = self.weeklyLimit.map { Self.rateWindow(for: $0) }
+
+        // Use subscription productName, planName, then level as fallback for identity display
+        let subLabel = self.subscription?.productName
+        let planLabel = self.planName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let levelLabel = self.level?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let loginMethod = [subLabel, planLabel, levelLabel].compactMap { $0 }.first { !$0.isEmpty }
         let identity = ProviderIdentitySnapshot(
             providerID: .zai,
             accountEmail: nil,
@@ -222,6 +240,7 @@ private struct ZaiQuotaLimitResponse: Decodable {
 private struct ZaiQuotaLimitData: Decodable {
     let limits: [ZaiLimitRaw]
     let planName: String?
+    let level: String?
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -234,6 +253,9 @@ private struct ZaiQuotaLimitData: Decodable {
         ].compactMap(\.self).first
         let trimmed = rawPlan?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.planName = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let rawLevel = try container.decodeIfPresent(String.self, forKey: .level)
+        let trimmedLevel = rawLevel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.level = (trimmedLevel?.isEmpty ?? true) ? nil : trimmedLevel
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -242,6 +264,7 @@ private struct ZaiQuotaLimitData: Decodable {
         case plan
         case planType = "plan_type"
         case packageName
+        case level
     }
 }
 
@@ -391,26 +414,18 @@ public struct ZaiUsageFetcher: Sendable {
             }
         }
 
-        // Multiple TOKENS_LIMIT entries: shortest window → sessionTokenLimit (tertiary),
-        // longest → tokenLimit (primary).
-        let tokenLimit: ZaiLimitEntry?
-        let sessionTokenLimit: ZaiLimitEntry?
-        if tokenLimits.count >= 2 {
-            let sorted = tokenLimits.sorted {
-                ($0.windowMinutes ?? Int.max) < ($1.windowMinutes ?? Int.max)
-            }
-            sessionTokenLimit = sorted.first
-            tokenLimit = sorted.last
-        } else {
-            tokenLimit = tokenLimits.first
-            sessionTokenLimit = nil
-        }
+        // Sort token limits by window size — shortest first (5-hour before weekly).
+        // Entries with nil windowMinutes (unknown unit) sort to the end to avoid displacing valid entries.
+        tokenLimits.sort { ($0.windowMinutes ?? Int.max) < ($1.windowMinutes ?? Int.max) }
+        let fiveHourLimit = tokenLimits.first
+        let weeklyLimit = tokenLimits.count > 1 ? tokenLimits[1] : nil
 
         return ZaiUsageSnapshot(
-            tokenLimit: tokenLimit,
-            sessionTokenLimit: sessionTokenLimit,
+            tokenLimit: fiveHourLimit,
+            weeklyLimit: weeklyLimit,
             timeLimit: timeLimit,
             planName: responseData.planName,
+            level: responseData.level,
             updatedAt: Date())
     }
 

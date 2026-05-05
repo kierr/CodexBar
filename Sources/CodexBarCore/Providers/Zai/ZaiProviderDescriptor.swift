@@ -10,9 +10,9 @@ public enum ZaiProviderDescriptor {
             metadata: ProviderMetadata(
                 id: .zai,
                 displayName: "z.ai",
-                sessionLabel: "Tokens",
+                sessionLabel: "5-hour",
                 weeklyLabel: "MCP",
-                opusLabel: "5-hour",
+                opusLabel: "Weekly",
                 supportsOpus: true,
                 supportsCredits: false,
                 creditsHint: "",
@@ -22,7 +22,8 @@ public enum ZaiProviderDescriptor {
                 isPrimaryProvider: false,
                 usesAccountFallback: false,
                 dashboardURL: "https://z.ai/manage-apikey/subscription",
-                statusPageURL: nil),
+                statusPageURL: nil,
+                statusLinkURL: "https://z.ai"),
             branding: ProviderBranding(
                 iconStyle: .zai,
                 iconResourceName: "ProviderIcon-zai",
@@ -53,12 +54,31 @@ struct ZaiAPIFetchStrategy: ProviderFetchStrategy {
             throw ZaiSettingsError.missingToken
         }
         let region = context.settings?.zai?.apiRegion ?? .global
-        let usage = try await ZaiUsageFetcher.fetchUsage(
+
+        // Fetch quota (required) and subscription (optional) in parallel.
+        async let quotaTask = ZaiUsageFetcher.fetchUsage(
             apiKey: apiKey,
             region: region,
             environment: context.env)
+        async let subscriptionTask = ZaiSubscriptionFetcher.fetchSubscription(
+            apiKey: apiKey,
+            region: region,
+            environment: context.env)
+
+        let usage = try await quotaTask
+        let subscription = await subscriptionTask
+
+        let enriched = ZaiUsageSnapshot(
+            tokenLimit: usage.tokenLimit,
+            weeklyLimit: usage.weeklyLimit,
+            timeLimit: usage.timeLimit,
+            planName: usage.planName,
+            level: usage.level,
+            subscription: subscription,
+            updatedAt: usage.updatedAt)
+
         return self.makeResult(
-            usage: usage.toUsageSnapshot(),
+            usage: enriched.toUsageSnapshot(),
             sourceLabel: "api")
     }
 
