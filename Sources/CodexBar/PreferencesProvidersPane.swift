@@ -593,6 +593,7 @@ struct ProvidersPane: View {
             showOptionalCreditsAndExtraUsage: self.settings.showOptionalCreditsAndExtraUsage,
             hidePersonalInfo: self.settings.hidePersonalInfo,
             claudePeakHoursEnabled: self.settings.claudePeakHoursEnabled,
+            zaiPeakHoursEnabled: self.settings.zaiPeakHoursEnabled,
             weeklyPace: weeklyPace,
             now: now)
         return UsageMenuCardView.Model.make(input)

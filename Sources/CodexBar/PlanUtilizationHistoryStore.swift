@@ -20,7 +20,15 @@ struct PlanUtilizationSeriesName: RawRepresentable, Hashable, Codable, Expressib
 struct PlanUtilizationHistoryEntry: Codable, Equatable {
     let capturedAt: Date
     let usedPercent: Double
+    let usedTokens: Int64?
     let resetsAt: Date?
+
+    init(capturedAt: Date, usedPercent: Double, usedTokens: Int64? = nil, resetsAt: Date? = nil) {
+        self.capturedAt = capturedAt
+        self.usedPercent = usedPercent
+        self.usedTokens = usedTokens
+        self.resetsAt = resetsAt
+    }
 }
 
 struct PlanUtilizationSeriesHistory: Codable, Equatable {

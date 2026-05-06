@@ -1454,8 +1454,14 @@ extension StatusItemController {
 
         let sourceLabel = snapshotOverride == nil ? self.store.sourceLabel(for: target) : nil
         let kiloAutoMode = target == .kilo && self.settings.kiloUsageDataSource == .auto
-        // Abacus uses primary for monthly credits (no secondary window)
-        let paceWindow = target == .abacus ? snapshot?.primary : snapshot?.secondary
+        // Abacus uses primary for monthly credits (no secondary window).
+        // ZAI uses primary (5-hour tokens) for pace — secondary is MCP tools, tertiary is weekly.
+        let paceWindow: RateWindow?
+        switch target {
+        case .abacus: paceWindow = snapshot?.primary
+        case .zai: paceWindow = snapshot?.primary
+        default: paceWindow = snapshot?.secondary ?? snapshot?.primary
+        }
         let weeklyPace = if let codexProjection,
                             let weekly = codexProjection.rateWindow(for: .weekly)
         {
@@ -1489,6 +1495,7 @@ extension StatusItemController {
             kiloAutoMode: kiloAutoMode,
             hidePersonalInfo: self.settings.hidePersonalInfo,
             claudePeakHoursEnabled: self.settings.claudePeakHoursEnabled,
+            zaiPeakHoursEnabled: self.settings.zaiPeakHoursEnabled,
             weeklyPace: weeklyPace,
             now: now)
         return UsageMenuCardView.Model.make(input)

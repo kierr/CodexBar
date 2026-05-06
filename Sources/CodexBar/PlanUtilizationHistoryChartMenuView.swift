@@ -50,6 +50,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
         let index: Int
         let date: Date
         let usedPercent: Double
+        let usedTokens: Int64?
         let isObserved: Bool
     }
 
@@ -70,6 +71,36 @@ struct PlanUtilizationHistoryChartMenuView: View {
 
     @State private var selectedSeriesID: String?
     @State private var selectedPointID: Date?
+    @State private var selectedTimeRange: ChartTimeRange = .last30Days
+
+    private enum ChartTimeRange: String, CaseIterable {
+        case last24Hours = "24h"
+        case last7Days = "7d"
+        case last30Days = "30d"
+
+        var timeInterval: TimeInterval {
+            switch self {
+            case .last24Hours: 24 * 60 * 60
+            case .last7Days: 7 * 24 * 60 * 60
+            case .last30Days: 30 * 24 * 60 * 60
+            }
+        }
+
+        var bucketMinutes: Int {
+            switch self {
+            case .last24Hours: 60
+            case .last7Days, .last30Days: 24 * 60
+            }
+        }
+
+        var maxBars: Int {
+            switch self {
+            case .last24Hours: 24
+            case .last7Days: 7
+            case .last30Days: 30
+            }
+        }
+    }
 
     init(
         provider: UsageProvider,
@@ -93,9 +124,25 @@ struct PlanUtilizationHistoryChartMenuView: View {
         let model = Self.makeModel(
             history: effectiveSelectedSeries?.history,
             provider: self.provider,
-            referenceDate: Date())
+            referenceDate: Date(),
+            timeRange: self.selectedTimeRange)
 
         VStack(alignment: .leading, spacing: 10) {
+            Picker(selection: Binding(
+                get: { self.selectedTimeRange },
+                set: { newValue in
+                    self.selectedTimeRange = newValue
+                    self.selectedPointID = nil
+                })) {
+                ForEach(ChartTimeRange.allCases, id: \.rawValue) { range in
+                    Text(range.rawValue).tag(range)
+                }
+            } label: {
+                EmptyView()
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
             if visibleSeries.count > 1 {
                 Picker(selection: Binding(
                     get: { effectiveSelectedSeries?.id ?? "" },
@@ -138,6 +185,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
                                         Self.axisLabel(
                                             for: point,
                                             windowMinutes: effectiveSelectedSeries?.history.windowMinutes ?? 0,
+                                            timeRange: self.selectedTimeRange,
                                             isTrailingFullChartLabel: isTrailingFullChartLabel)
                                     }
                                 }
@@ -235,16 +283,17 @@ struct PlanUtilizationHistoryChartMenuView: View {
     private nonisolated static func makeModel(
         history: PlanUtilizationSeriesHistory?,
         provider: UsageProvider,
-        referenceDate: Date) -> Model
+        referenceDate: Date,
+        timeRange: ChartTimeRange) -> Model
     {
         guard let history else {
             return self.emptyModel(provider: provider)
         }
 
-        var points = self.seriesPoints(history: history, referenceDate: referenceDate)
-        if points.count > Layout.maxPoints {
-            points = Array(points.suffix(Layout.maxPoints))
-        }
+        var points = self.calendarTimeRangePoints(
+            history: history,
+            range: timeRange,
+            referenceDate: referenceDate)
 
         points = points.enumerated().map { offset, point in
             Point(
@@ -252,6 +301,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
                 index: offset,
                 date: point.date,
                 usedPercent: point.usedPercent,
+                usedTokens: point.usedTokens,
                 isObserved: point.isObserved)
         }
 
@@ -263,7 +313,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
 
         return Model(
             points: points,
-            axisIndexes: self.axisIndexes(points: points, windowMinutes: history.windowMinutes),
+            axisIndexes: self.axisIndexes(points: points, windowMinutes: history.windowMinutes, timeRange: timeRange),
             xDomain: self.xDomain(points: points),
             pointsByID: pointsByID,
             pointsByIndex: pointsByIndex,
@@ -325,6 +375,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
                         index: 0,
                         date: cursor,
                         usedPercent: 0,
+                        usedTokens: nil,
                         isObserved: false))
                     cursor = cursor.addingTimeInterval(windowInterval)
                 }
@@ -336,6 +387,7 @@ struct PlanUtilizationHistoryChartMenuView: View {
                     index: 0,
                     date: bucket.displayBoundaryDate,
                     usedPercent: bucket.usedPercent,
+                    usedTokens: nil,
                     isObserved: true))
             }
             previousPeriodBoundaryDate = periodBoundaryDate
@@ -355,10 +407,73 @@ struct PlanUtilizationHistoryChartMenuView: View {
                         index: 0,
                         date: cursor,
                         usedPercent: 0,
+                        usedTokens: nil,
                         isObserved: false))
                     cursor = cursor.addingTimeInterval(windowInterval)
                 }
             }
+        }
+
+        return points
+    }
+
+    private nonisolated static func calendarTimeRangePoints(
+        history: PlanUtilizationSeriesHistory,
+        range: ChartTimeRange,
+        referenceDate: Date) -> [Point]
+    {
+        let cutoff = referenceDate.addingTimeInterval(-range.timeInterval)
+        let bucketSeconds = Double(range.bucketMinutes) * 60
+        let calendar = Calendar.current
+        var peakByBucket: [Date: (usedPercent: Double, usedTokens: Int64?, capturedAt: Date)] = [:]
+
+        for entry in history.entries where entry.capturedAt >= cutoff {
+            let bucketDate: Date
+            if range == .last24Hours {
+                var components = calendar.dateComponents([.year, .month, .day, .hour], from: entry.capturedAt)
+                components.minute = 0
+                components.second = 0
+                bucketDate = calendar.date(from: components) ?? entry.capturedAt
+            } else {
+                bucketDate = calendar.startOfDay(for: entry.capturedAt)
+            }
+            let existing = peakByBucket[bucketDate]
+            if existing == nil || entry.usedPercent > existing!.usedPercent
+                || (entry.usedPercent == existing!.usedPercent && entry.capturedAt > existing!.capturedAt)
+            {
+                peakByBucket[bucketDate] = (usedPercent: max(0, min(100, entry.usedPercent)), usedTokens: entry.usedTokens, capturedAt: entry.capturedAt)
+            }
+        }
+
+        guard !peakByBucket.isEmpty else { return [] }
+
+        let sortedBuckets = peakByBucket.keys.sorted()
+        var points: [Point] = []
+        var cursor: Date
+
+        if range == .last24Hours {
+            var comps = calendar.dateComponents([.year, .month, .day, .hour], from: cutoff)
+            comps.minute = 0
+            comps.second = 0
+            cursor = calendar.date(from: comps) ?? cutoff
+        } else {
+            cursor = calendar.startOfDay(for: cutoff)
+        }
+
+        for bucketDate in sortedBuckets {
+            while cursor < bucketDate {
+                points.append(Point(id: cursor, index: 0, date: cursor, usedPercent: 0, usedTokens: nil, isObserved: false))
+                cursor = cursor.addingTimeInterval(bucketSeconds)
+            }
+            if let peak = peakByBucket[bucketDate] {
+                points.append(Point(id: bucketDate, index: 0, date: bucketDate, usedPercent: peak.usedPercent, usedTokens: peak.usedTokens, isObserved: true))
+            }
+            cursor = cursor.addingTimeInterval(bucketSeconds)
+        }
+
+        while cursor <= referenceDate && points.count < range.maxBars * 2 {
+            points.append(Point(id: cursor, index: 0, date: cursor, usedPercent: 0, usedTokens: nil, isObserved: false))
+            cursor = cursor.addingTimeInterval(bucketSeconds)
         }
 
         return points
@@ -485,16 +600,34 @@ struct PlanUtilizationHistoryChartMenuView: View {
         return -0.5...(Double(Layout.maxPoints) - 0.5)
     }
 
-    private nonisolated static func axisIndexes(points: [Point], windowMinutes: Int) -> [Double] {
-        let candidateIndexes = self.axisCandidateIndexes(points: points, windowMinutes: windowMinutes)
+    private nonisolated static func axisIndexes(points: [Point], windowMinutes: Int, timeRange: ChartTimeRange?) -> [Double] {
+        let candidateIndexes = self.axisCandidateIndexes(points: points, windowMinutes: windowMinutes, timeRange: timeRange)
         return self.proportionalAxisIndexes(points: points, candidateIndexes: candidateIndexes)
     }
 
-    private nonisolated static func axisCandidateIndexes(points: [Point], windowMinutes: Int) -> [Int] {
+    private nonisolated static func axisCandidateIndexes(points: [Point], windowMinutes: Int, timeRange: ChartTimeRange?) -> [Int] {
+        if timeRange == .last24Hours {
+            return self.hourlyAxisCandidateIndexes(points: points)
+        }
         if windowMinutes <= 300 {
             return self.sessionAxisCandidateIndexes(points: points)
         }
         return points.map(\.index)
+    }
+
+    private nonisolated static func hourlyAxisCandidateIndexes(points: [Point]) -> [Int] {
+        guard !points.isEmpty else { return [] }
+        let calendar = Calendar.current
+        var indexes: [Int] = []
+        var lastLabelHour: Int = -1
+        for (i, point) in points.enumerated() {
+            let hour = calendar.component(.hour, from: point.date)
+            if hour != lastLabelHour || i == points.count - 1 {
+                indexes.append(point.index)
+                lastLabelHour = hour
+            }
+        }
+        return indexes
     }
 
     private nonisolated static func sessionAxisCandidateIndexes(points: [Point]) -> [Int] {
@@ -554,9 +687,10 @@ struct PlanUtilizationHistoryChartMenuView: View {
     private static func axisLabel(
         for point: Point,
         windowMinutes: Int,
+        timeRange: ChartTimeRange?,
         isTrailingFullChartLabel: Bool) -> some View
     {
-        let label = Text(point.date.formatted(self.axisFormat(windowMinutes: windowMinutes)))
+        let label = Text(point.date.formatted(self.axisFormat(windowMinutes: windowMinutes, timeRange: timeRange)))
             .font(.caption2)
             .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
 
@@ -569,9 +703,9 @@ struct PlanUtilizationHistoryChartMenuView: View {
         }
     }
 
-    private nonisolated static func axisFormat(windowMinutes: Int) -> Date.FormatStyle {
-        if windowMinutes <= 300 {
-            return .dateTime.month(.abbreviated).day()
+    private nonisolated static func axisFormat(windowMinutes: Int, timeRange: ChartTimeRange?) -> Date.FormatStyle {
+        if timeRange == .last24Hours {
+            return .dateTime.hour().minute()
         }
         return .dateTime.month(.abbreviated).day()
     }
@@ -642,7 +776,8 @@ struct PlanUtilizationHistoryChartMenuView: View {
         let model = self.makeModel(
             history: selectedSeries?.history,
             provider: provider,
-            referenceDate: referenceDate ?? histories.flatMap(\.entries).map(\.capturedAt).max() ?? Date())
+            referenceDate: referenceDate ?? histories.flatMap(\.entries).map(\.capturedAt).max() ?? Date(),
+            timeRange: .last30Days)
         return ModelSnapshot(
             pointCount: model.points.count,
             axisIndexes: model.axisIndexes,
@@ -671,7 +806,8 @@ struct PlanUtilizationHistoryChartMenuView: View {
         let model = self.makeModel(
             history: selectedSeries?.history,
             provider: provider,
-            referenceDate: referenceDate ?? histories.flatMap(\.entries).map(\.capturedAt).max() ?? Date())
+            referenceDate: referenceDate ?? histories.flatMap(\.entries).map(\.capturedAt).max() ?? Date(),
+            timeRange: .last30Days)
         return self.detailLine(point: model.points.last, windowMinutes: selectedSeries?.history.windowMinutes ?? 0)
     }
 
@@ -778,12 +914,29 @@ extension PlanUtilizationHistoryChartMenuView {
 
         let dateLabel = self.detailDateLabel(for: point.date, windowMinutes: windowMinutes)
 
-        let used = max(0, min(100, point.usedPercent))
         if !point.isObserved {
             return "\(dateLabel): -"
         }
+        let used = max(0, min(100, point.usedPercent))
         let usedText = used.formatted(.number.precision(.fractionLength(0...1)))
+
+        if let tokens = point.usedTokens, tokens > 0 {
+            let tokenStr = Self.formatTokenCount(tokens)
+            return "\(dateLabel): \(tokenStr) (\(usedText)%)"
+        }
         return "\(dateLabel): \(usedText)% used"
+    }
+
+    private nonisolated static func formatTokenCount(_ value: Int64) -> String {
+        if value >= 1_000_000_000 {
+            return String(format: "%.1fB", Double(value) / 1_000_000_000.0)
+        } else if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000.0)
+        } else if value >= 1_000 {
+            return String(format: "%.1fK", Double(value) / 1_000.0)
+        } else {
+            return "\(value)"
+        }
     }
 
     private nonisolated static func detailDateLabel(for date: Date, windowMinutes: Int) -> String {

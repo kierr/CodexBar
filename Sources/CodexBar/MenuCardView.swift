@@ -671,6 +671,7 @@ extension UsageMenuCardView.Model {
         let kiloAutoMode: Bool
         let hidePersonalInfo: Bool
         let claudePeakHoursEnabled: Bool
+        let zaiPeakHoursEnabled: Bool
         let weeklyPace: UsagePace?
         let now: Date
 
@@ -696,6 +697,7 @@ extension UsageMenuCardView.Model {
             kiloAutoMode: Bool = false,
             hidePersonalInfo: Bool,
             claudePeakHoursEnabled: Bool = true,
+            zaiPeakHoursEnabled: Bool = true,
             weeklyPace: UsagePace? = nil,
             now: Date)
         {
@@ -720,6 +722,7 @@ extension UsageMenuCardView.Model {
             self.kiloAutoMode = kiloAutoMode
             self.hidePersonalInfo = hidePersonalInfo
             self.claudePeakHoursEnabled = claudePeakHoursEnabled
+            self.zaiPeakHoursEnabled = zaiPeakHoursEnabled
             self.weeklyPace = weeklyPace
             self.now = now
         }
@@ -794,6 +797,10 @@ extension UsageMenuCardView.Model {
 
         if input.provider == .claude, input.claudePeakHoursEnabled {
             let peakStatus = ClaudePeakHours.status(at: input.now)
+            return [peakStatus.label]
+        }
+        if input.provider == .zai, input.zaiPeakHoursEnabled {
+            let peakStatus = ZaiPeakHours.status(at: input.now)
             return [peakStatus.label]
         }
 
@@ -1093,7 +1100,7 @@ extension UsageMenuCardView.Model {
         var primaryDetailRight: String?
         var primaryPacePercent: Double?
         var primaryPaceOnTop = true
-        if input.provider == .abacus {
+        if input.provider == .abacus || input.provider == .zai || input.provider == .chutes {
             if let detail = primary.resetDescription,
                !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
@@ -1182,7 +1189,6 @@ extension UsageMenuCardView.Model {
            !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             weeklyDetailText = detail
-            weeklyResetText = nil
         }
         // Perplexity bonus credits don't reset; show balance without "Resets" prefix.
         if input.provider == .perplexity,
@@ -1203,7 +1209,7 @@ extension UsageMenuCardView.Model {
         }
         return Metric(
             id: "secondary",
-            title: input.metadata.weeklyLabel,
+            title: input.provider == .zai ? "MCP" : input.metadata.weeklyLabel,
             percent: Self.clamped(input.usageBarsShowUsed ? weekly.usedPercent : weekly.remainingPercent),
             percentStyle: percentStyle,
             resetText: weeklyResetText,
