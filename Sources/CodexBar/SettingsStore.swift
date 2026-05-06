@@ -264,6 +264,7 @@ extension SettingsStore {
         let claudeOAuthKeychainReadStrategyRaw = userDefaults.string(forKey: "claudeOAuthKeychainReadStrategy")
         let claudeWebExtrasEnabledRaw = userDefaults.object(forKey: "claudeWebExtrasEnabled") as? Bool ?? false
         let claudePeakHoursEnabled = userDefaults.object(forKey: "claudePeakHoursEnabled") as? Bool ?? true
+        let zaiPeakHoursEnabled = userDefaults.object(forKey: "zaiPeakHoursEnabled") as? Bool ?? true
         let creditsExtrasDefault = userDefaults.object(forKey: "showOptionalCreditsAndExtraUsage") as? Bool
         let showOptionalCreditsAndExtraUsage = creditsExtrasDefault ?? true
         if creditsExtrasDefault == nil { userDefaults.set(true, forKey: "showOptionalCreditsAndExtraUsage") }
@@ -310,6 +311,7 @@ extension SettingsStore {
             claudeOAuthKeychainReadStrategyRaw: claudeOAuthKeychainReadStrategyRaw,
             claudeWebExtrasEnabledRaw: claudeWebExtrasEnabledRaw,
             claudePeakHoursEnabled: claudePeakHoursEnabled,
+            zaiPeakHoursEnabled: zaiPeakHoursEnabled,
             showOptionalCreditsAndExtraUsage: showOptionalCreditsAndExtraUsage,
             openAIWebAccessEnabled: openAIWebAccessEnabled,
             openAIWebBatterySaverEnabled: openAIWebBatterySaverEnabled,

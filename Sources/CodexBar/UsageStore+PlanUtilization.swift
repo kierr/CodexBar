@@ -13,7 +13,7 @@ extension UsageStore {
 
     func supportsPlanUtilizationHistory(for provider: UsageProvider) -> Bool {
         switch provider {
-        case .codex, .claude:
+        case .codex, .claude, .zai:
             true
         default:
             false
@@ -315,6 +315,10 @@ extension UsageStore {
             appendWindow(snapshot.primary, name: .session)
             appendWindow(snapshot.secondary, name: .weekly)
             appendWindow(snapshot.tertiary, name: .opus)
+        case .zai:
+            appendWindow(snapshot.primary, name: .session)
+            appendWindow(snapshot.secondary, name: .opus)
+            appendWindow(snapshot.tertiary, name: .weekly)
         default:
             for window in [snapshot.primary, snapshot.secondary, snapshot.tertiary] {
                 guard let window, window.windowMinutes == Self.weeklyWindowMinutes else { continue }
@@ -969,6 +973,54 @@ extension UsageStore {
         self.codexLegacyPlanUtilizationEmailHashKey(for: normalizedEmail)
     }
     #endif
+
+    /// Backfills ZAI plan utilization history from daily model-usage API data.
+    /// Call after a successful ZAI refresh that returns model usage days.
+    func backfillZaiModelUsageHistory(
+        modelUsageDays: [ZaiModelUsageDay],
+        tokenLimit: Int64?)
+    {
+        let log = CodexBarLog.logger(LogCategories.zaiUsage)
+        guard !modelUsageDays.isEmpty, let tokenLimit, tokenLimit > 0 else { return }
+
+        let key = PlanUtilizationSeriesKey(name: .session, windowMinutes: 300)
+        var samples: [PlanUtilizationSeriesSample] = []
+        for day in modelUsageDays.sorted(by: { $0.date < $1.date }) {
+            let usedPercent = min(100, max(0, Double(day.tokensUsed) / Double(tokenLimit) * 100))
+            let entry = PlanUtilizationHistoryEntry(
+                capturedAt: day.date,
+                usedPercent: usedPercent,
+                usedTokens: day.tokensUsed,
+                resetsAt: nil)
+            samples.append(PlanUtilizationSeriesSample(
+                name: key.name,
+                windowMinutes: key.windowMinutes,
+                entry: entry))
+        }
+
+        guard !samples.isEmpty else { return }
+        Task { @MainActor in
+            var providerBuckets = self.planUtilizationHistory[.zai] ?? PlanUtilizationHistoryBuckets()
+            let originalProviderBuckets = providerBuckets
+            let accountKey = self.resolvePlanUtilizationAccountKey(
+                provider: .zai,
+                snapshot: self.snapshots[.zai],
+                preferredAccount: nil,
+                providerBuckets: &providerBuckets)
+
+            guard let updatedHistories = Self.updatedPlanUtilizationHistories(
+                existingHistories: providerBuckets.histories(for: accountKey) ?? [],
+                samples: samples)
+            else { return }
+
+            providerBuckets.setHistories(updatedHistories, for: accountKey)
+            self.planUtilizationHistory[.zai] = providerBuckets
+            if providerBuckets != originalProviderBuckets {
+                let snapshotToPersist = self.planUtilizationHistory
+                await self.planUtilizationPersistenceCoordinator.enqueue(snapshotToPersist)
+            }
+        }
+    }
 }
 
 actor PlanUtilizationHistoryPersistenceCoordinator {

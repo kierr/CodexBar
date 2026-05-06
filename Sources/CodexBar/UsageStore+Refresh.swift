@@ -118,6 +118,36 @@ extension UsageStore {
             if provider == .codex {
                 self.recordCodexHistoricalSampleIfNeeded(snapshot: backfilled)
             }
+            if provider == .zai {
+                let zaiUsage = backfilled.zaiUsage
+                let modelDays = zaiUsage?.modelUsageDays
+                let tl = zaiUsage?.tokenLimit
+                // Prefer explicit usage (quota) field; fallback: currentValue/percentage;
+                // last resort: estimate from today's model-usage tokens / percentage.
+                var tokenLimitVal: Int? = tl?.usage
+                if tokenLimitVal == nil,
+                   let pct = tl?.percentage, pct > 0,
+                   let cur = tl?.currentValue
+                {
+                    tokenLimitVal = Int(Double(cur) / (pct / 100.0))
+                }
+                if tokenLimitVal == nil,
+                   let pct = tl?.percentage, pct > 0,
+                   let todayTokens = modelDays?.last(where: { Calendar.current.isDateInToday($0.date) })?.tokensUsed,
+                   todayTokens > 0
+                {
+                    tokenLimitVal = Int(Double(todayTokens) / (pct / 100.0))
+                }
+                if let zaiUsage,
+                   let modelUsageDays = modelDays,
+                   !modelUsageDays.isEmpty,
+                   let tokenLimit = tokenLimitVal
+                {
+                    self.backfillZaiModelUsageHistory(
+                        modelUsageDays: modelUsageDays,
+                        tokenLimit: Int64(tokenLimit))
+                }
+            }
         case let .failure(error):
             if provider == .codex,
                let codexExpectedGuard,

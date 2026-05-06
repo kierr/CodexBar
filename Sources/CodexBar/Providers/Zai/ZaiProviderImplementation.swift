@@ -58,6 +58,27 @@ struct ZaiProviderImplementation: ProviderImplementation {
     }
 
     @MainActor
+    func settingsToggles(context: ProviderSettingsContext) -> [ProviderSettingsToggleDescriptor] {
+        let peakHoursBinding = Binding(
+            get: { context.settings.zaiPeakHoursEnabled },
+            set: { context.settings.zaiPeakHoursEnabled = $0 })
+
+        return [
+            ProviderSettingsToggleDescriptor(
+                id: "zai-peak-hours",
+                title: "Show peak hours indicator",
+                subtitle: "Show whether z.ai is in peak usage hours (2–6 AM ET).",
+                binding: peakHoursBinding,
+                statusText: nil,
+                actions: [],
+                isVisible: nil,
+                onChange: nil,
+                onAppDidBecomeActive: nil,
+                onAppearWhenEnabled: nil),
+        ]
+    }
+
+    @MainActor
     func settingsFields(context: ProviderSettingsContext) -> [ProviderSettingsFieldDescriptor] {
         _ = context
         return []

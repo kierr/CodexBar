@@ -265,6 +265,14 @@ extension SettingsStore {
         }
     }
 
+    var zaiPeakHoursEnabled: Bool {
+        get { self.defaultsState.zaiPeakHoursEnabled }
+        set {
+            self.defaultsState.zaiPeakHoursEnabled = newValue
+            self.userDefaults.set(newValue, forKey: "zaiPeakHoursEnabled")
+        }
+    }
+
     var showOptionalCreditsAndExtraUsage: Bool {
         get { self.defaultsState.showOptionalCreditsAndExtraUsage }
         set {

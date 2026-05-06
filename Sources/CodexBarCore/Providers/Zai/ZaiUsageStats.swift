@@ -138,6 +138,7 @@ public struct ZaiUsageSnapshot: Sendable {
     public let planName: String?
     public let level: String?
     public let subscription: ZaiSubscriptionEntry?
+    public let modelUsageDays: [ZaiModelUsageDay]?
     public let updatedAt: Date
 
     public init(
@@ -147,6 +148,7 @@ public struct ZaiUsageSnapshot: Sendable {
         planName: String?,
         level: String? = nil,
         subscription: ZaiSubscriptionEntry? = nil,
+        modelUsageDays: [ZaiModelUsageDay]? = nil,
         updatedAt: Date)
     {
         self.tokenLimit = tokenLimit
@@ -155,6 +157,7 @@ public struct ZaiUsageSnapshot: Sendable {
         self.planName = planName
         self.level = level
         self.subscription = subscription
+        self.modelUsageDays = modelUsageDays
         self.updatedAt = updatedAt
     }
 
@@ -207,11 +210,48 @@ extension ZaiUsageSnapshot {
     }
 
     private static func rateWindow(for limit: ZaiLimitEntry) -> RateWindow {
-        RateWindow(
+        let resetsAt = limit.nextResetTime ?? Self.synthesizedResetsAt(
+            windowMinutes: limit.windowMinutes)
+        return RateWindow(
             usedPercent: limit.usedPercent,
-            windowMinutes: limit.type == .tokensLimit ? limit.windowMinutes : nil,
-            resetsAt: limit.nextResetTime,
+            windowMinutes: limit.windowMinutes,
+            resetsAt: resetsAt,
             resetDescription: self.resetDescription(for: limit))
+    }
+
+    /// Synthesize a resetsAt when the API doesn't provide one.
+    /// Aligns to the next clean boundary of the window duration.
+    private static func synthesizedResetsAt(windowMinutes: Int?) -> Date? {
+        guard let minutes = windowMinutes, minutes > 0 else { return nil }
+        let now = Date()
+        let calendar = Calendar(identifier: .gregorian)
+        if minutes <= 300 {
+            // 5-hour or less: align to next 5-hour boundary.
+            var comps = calendar.dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
+            let hour = comps.hour ?? 0
+            let nextBoundary = ((hour / 5) + 1) * 5
+            if nextBoundary >= 24 {
+                comps.hour = 0
+                comps.minute = 0
+                comps.second = 0
+                return calendar.date(byAdding: .day, value: 1, to: calendar.date(from: comps)!) ?? now.addingTimeInterval(5 * 3600)
+            }
+            comps.hour = nextBoundary
+            comps.minute = 0
+            comps.second = 0
+            return calendar.date(from: comps) ?? now.addingTimeInterval(5 * 3600)
+        }
+        // Longer windows: next month start as fallback.
+        var nextMonth = DateComponents()
+        let c = calendar.dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
+        nextMonth.year = c.year
+        nextMonth.month = (c.month ?? 1) + 1
+        nextMonth.day = 1
+        nextMonth.hour = 0
+        nextMonth.minute = 0
+        nextMonth.second = 0
+        nextMonth.timeZone = TimeZone(identifier: "UTC")
+        return calendar.date(from: nextMonth) ?? now.addingTimeInterval(30 * 24 * 3600)
     }
 
     private static func resetDescription(for limit: ZaiLimitEntry) -> String? {
@@ -402,6 +442,27 @@ public struct ZaiUsageFetcher: Sendable {
 
         var tokenLimits: [ZaiLimitEntry] = []
         var timeLimit: ZaiLimitEntry?
+
+        // Log raw limit types for debugging MCP/secondary visibility
+        let limitTypes = responseData.limits.compactMap { $0.type }
+        Self.log.debug("ZAI quota limits returned: types=[\(limitTypes.joined(separator: ","))] count=\(responseData.limits.count)")
+        if !limitTypes.isEmpty {
+            let details = responseData.limits.compactMap { l -> String? in
+                guard let e = l.toLimitEntry() else { return nil }
+                return "\(e.type.rawValue): pct=\(e.percentage) usage=\(e.usage.map(String.init) ?? "nil") cur=\(e.currentValue.map(String.init) ?? "nil") rem=\(e.remaining.map(String.init) ?? "nil") unit=\(e.unit.rawValue) num=\(e.number)"
+            }
+            let dbg = "LIMITS \(ISO8601DateFormatter().string(from: Date())): [\(details.joined(separator: "; "))]\n"
+            let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("com.steipete.codexbar", isDirectory: true)
+                .appendingPathComponent("history", isDirectory: true)
+            if let url = dir?.appendingPathComponent("zai-debug.txt") {
+                if let prev = try? String(contentsOf: url, encoding: .utf8) {
+                    try? (prev + dbg).write(to: url, atomically: true, encoding: .utf8)
+                } else {
+                    try? dbg.write(to: url, atomically: true, encoding: .utf8)
+                }
+            }
+        }
 
         for limit in responseData.limits {
             if let entry = limit.toLimitEntry() {

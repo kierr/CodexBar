@@ -10,8 +10,8 @@ public enum ZaiProviderDescriptor {
             metadata: ProviderMetadata(
                 id: .zai,
                 displayName: "z.ai",
-                sessionLabel: "5-hour",
-                weeklyLabel: "MCP",
+                sessionLabel: "Session",
+                weeklyLabel: "Weekly",
                 opusLabel: "Weekly",
                 supportsOpus: true,
                 supportsCredits: false,
@@ -55,7 +55,7 @@ struct ZaiAPIFetchStrategy: ProviderFetchStrategy {
         }
         let region = context.settings?.zai?.apiRegion ?? .global
 
-        // Fetch quota (required) and subscription (optional) in parallel.
+        // Fetch quota (required), subscription (optional), and model-usage history (optional) in parallel.
         async let quotaTask = ZaiUsageFetcher.fetchUsage(
             apiKey: apiKey,
             region: region,
@@ -64,9 +64,14 @@ struct ZaiAPIFetchStrategy: ProviderFetchStrategy {
             apiKey: apiKey,
             region: region,
             environment: context.env)
+        async let modelUsageTask = ZaiModelUsageFetcher.fetchModelUsage(
+            apiKey: apiKey,
+            region: region,
+            environment: context.env)
 
         let usage = try await quotaTask
         let subscription = await subscriptionTask
+        let modelUsageDays = await modelUsageTask
 
         let enriched = ZaiUsageSnapshot(
             tokenLimit: usage.tokenLimit,
@@ -75,6 +80,7 @@ struct ZaiAPIFetchStrategy: ProviderFetchStrategy {
             planName: usage.planName,
             level: usage.level,
             subscription: subscription,
+            modelUsageDays: modelUsageDays,
             updatedAt: usage.updatedAt)
 
         return self.makeResult(

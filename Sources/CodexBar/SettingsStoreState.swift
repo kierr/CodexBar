@@ -27,6 +27,7 @@ struct SettingsDefaultsState {
     var claudeOAuthKeychainReadStrategyRaw: String?
     var claudeWebExtrasEnabledRaw: Bool
     var claudePeakHoursEnabled: Bool
+    var zaiPeakHoursEnabled: Bool
     var showOptionalCreditsAndExtraUsage: Bool
     var openAIWebAccessEnabled: Bool
     var openAIWebBatterySaverEnabled: Bool
