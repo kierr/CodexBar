@@ -38,6 +38,8 @@ public enum ProviderConfigEnvironment {
             if CodebuffSettingsReader.apiKey(environment: base) == nil {
                 env[CodebuffSettingsReader.apiTokenKey] = apiKey
             }
+        case .chutes:
+            env[ChutesSettingsReader.apiKeyEnvironmentKey] = apiKey
         default:
             break
         }

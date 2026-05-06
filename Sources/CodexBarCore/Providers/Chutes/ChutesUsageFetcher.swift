@@ -6,18 +6,33 @@ import FoundationNetworking
 // MARK: - API response types
 
 public struct ChutesSubscriptionUsageResponse: Decodable, Sendable {
-    public let monthly: ChutesRateBucketResponse
-    public let fourHour: ChutesRateBucketResponse
+    public let subscription: Bool?
+    public let monthly: ChutesRateBucketResponse?
+    public let fourHour: ChutesRateBucketResponse?
 
     enum CodingKeys: String, CodingKey {
+        case subscription
         case monthly
         case fourHour = "four_hour"
+    }
+
+    public var hasSubscription: Bool {
+        self.monthly != nil && self.fourHour != nil
     }
 }
 
 public struct ChutesRateBucketResponse: Decodable, Sendable {
     public let usage: Double
     public let cap: Double
+    public let remaining: Double?
+    public let resetAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case usage
+        case cap
+        case remaining
+        case resetAt = "reset_at"
+    }
 }
 
 public struct ChutesUserInfoResponse: Decodable, Sendable {
@@ -35,10 +50,12 @@ public struct ChutesUserInfoResponse: Decodable, Sendable {
 public struct ChutesRateBucket: Sendable {
     public let usage: Double
     public let cap: Double
+    public let resetsAt: Date?
 
-    public init(usage: Double, cap: Double) {
+    public init(usage: Double, cap: Double, resetsAt: Date? = nil) {
         self.usage = usage
         self.cap = cap
+        self.resetsAt = resetsAt
     }
 
     public var usedPercent: Double {
@@ -62,14 +79,14 @@ public struct ChutesUserInfo: Sendable {
 }
 
 public struct ChutesUsageSnapshot: Sendable {
-    public let fourHour: ChutesRateBucket
-    public let monthly: ChutesRateBucket
+    public let fourHour: ChutesRateBucket?
+    public let monthly: ChutesRateBucket?
     public let user: ChutesUserInfo?
     public let updatedAt: Date
 
     public init(
-        fourHour: ChutesRateBucket,
-        monthly: ChutesRateBucket,
+        fourHour: ChutesRateBucket?,
+        monthly: ChutesRateBucket?,
         user: ChutesUserInfo?,
         updatedAt: Date)
     {
@@ -80,14 +97,45 @@ public struct ChutesUsageSnapshot: Sendable {
     }
 
     public func toUsageSnapshot() -> UsageSnapshot {
-        let primary = Self.rateWindow(
-            bucket: self.fourHour,
-            windowMinutes: 240,
-            resetsAt: Self.nextFourHourBoundary(from: self.updatedAt))
-        let secondary = Self.rateWindow(
-            bucket: self.monthly,
-            windowMinutes: 43_200,
-            resetsAt: Self.nextMonthStart(from: self.updatedAt))
+        let primary: RateWindow
+        if let fourHour {
+            primary = Self.rateWindow(
+                bucket: fourHour,
+                windowMinutes: 240,
+                resetsAt: fourHour.resetsAt ?? Self.nextFourHourBoundary(from: self.updatedAt))
+        } else {
+            // No subscription — show a placeholder so the menu card renders.
+            primary = RateWindow(
+                usedPercent: 0,
+                windowMinutes: 240,
+                resetsAt: Self.nextFourHourBoundary(from: self.updatedAt),
+                resetDescription: "No active subscription")
+        }
+
+        let secondary: RateWindow
+        if let monthly {
+            let detail: String? = monthly.cap > 0
+                ? String(format: "$%.2f / $%.2f", monthly.usage, monthly.cap)
+                : nil
+            let balanceText = user.flatMap { u in u.balance.map { "Balance: $\(String(format: "%.2f", $0))" } }
+            secondary = RateWindow(
+                usedPercent: monthly.usedPercent,
+                windowMinutes: 43_200,
+                resetsAt: monthly.resetsAt ?? Self.nextMonthStart(from: self.updatedAt),
+                resetDescription: balanceText ?? detail)
+        } else if let user, let bal = user.balance {
+            secondary = RateWindow(
+                usedPercent: 0,
+                windowMinutes: 43_200,
+                resetsAt: Self.nextMonthStart(from: self.updatedAt),
+                resetDescription: "Balance: $\(String(format: "%.2f", bal))")
+        } else {
+            secondary = RateWindow(
+                usedPercent: 0,
+                windowMinutes: 43_200,
+                resetsAt: Self.nextMonthStart(from: self.updatedAt),
+                resetDescription: "No subscription")
+        }
 
         let loginMethod = self.user.map { $0.username }
 
@@ -97,23 +145,11 @@ public struct ChutesUsageSnapshot: Sendable {
             accountOrganization: nil,
             loginMethod: loginMethod)
 
-        let providerCost: ProviderCostSnapshot? = self.user.flatMap { user in
-            user.balance.map { _ in
-                ProviderCostSnapshot(
-                    used: self.monthly.usage,
-                    limit: self.monthly.cap,
-                    currencyCode: "USD",
-                    period: "Monthly",
-                    resetsAt: Self.nextMonthStart(from: self.updatedAt),
-                    updatedAt: self.updatedAt)
-            }
-        }
-
         return UsageSnapshot(
             primary: primary,
             secondary: secondary,
             tertiary: nil,
-            providerCost: providerCost,
+            providerCost: nil,
             updatedAt: self.updatedAt,
             identity: identity)
     }
@@ -218,9 +254,17 @@ public struct ChutesUsageFetcher: Sendable {
         let usage = try await usageTask
         let user = await userTask
 
+        let fourHour = usage.fourHour.map { ChutesRateBucket(usage: $0.usage, cap: $0.cap, resetsAt: Self.parseISO8601($0.resetAt)) }
+        let monthly = usage.monthly.map { ChutesRateBucket(usage: $0.usage, cap: $0.cap, resetsAt: Self.parseISO8601($0.resetAt)) }
+
+        // Must have at least user identity or subscription data to be useful.
+        guard fourHour != nil || monthly != nil || user != nil else {
+            throw ChutesUsageError.apiError("No subscription data. Visit chutes.ai/app/settings to set up a subscription.")
+        }
+
         return ChutesUsageSnapshot(
-            fourHour: ChutesRateBucket(usage: usage.fourHour.usage, cap: usage.fourHour.cap),
-            monthly: ChutesRateBucket(usage: usage.monthly.usage, cap: usage.monthly.cap),
+            fourHour: fourHour,
+            monthly: monthly,
             user: user,
             updatedAt: Date())
     }
@@ -291,5 +335,12 @@ public struct ChutesUsageFetcher: Sendable {
 
     static func _parseSubscriptionUsageForTesting(_ data: Data) throws -> ChutesSubscriptionUsageResponse {
         try JSONDecoder().decode(ChutesSubscriptionUsageResponse.self, from: data)
+    }
+
+    private static func parseISO8601(_ string: String?) -> Date? {
+        guard let string else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: string) ?? ISO8601DateFormatter().date(from: string)
     }
 }

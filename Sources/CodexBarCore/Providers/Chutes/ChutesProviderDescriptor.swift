@@ -10,8 +10,8 @@ public enum ChutesProviderDescriptor {
             metadata: ProviderMetadata(
                 id: .chutes,
                 displayName: "Chutes",
-                sessionLabel: "4h Spend",
-                weeklyLabel: "Monthly Spend",
+                sessionLabel: "Session",
+                weeklyLabel: "Monthly",
                 opusLabel: nil,
                 supportsOpus: false,
                 supportsCredits: false,
